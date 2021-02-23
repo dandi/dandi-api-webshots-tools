@@ -3,6 +3,7 @@
 import sys
 import time
 
+from functools import partial
 import yaml
 
 from selenium.webdriver.common.by import By
@@ -21,12 +22,11 @@ def get_dandisets():
     return sorted(x['identifier'] for x in dandisets['results'])
 
 
-def process_dandiset(ds):
-    driver = webdriver.Chrome()
+def process_dandiset(driver, ds):
 
-    def wait_no_progressbar():
+    def wait_no_progressbar(cls):
         WebDriverWait(driver, 30).until(
-            EC.invisibility_of_element_located((By.CLASS_NAME, "v-progress-circular")))
+            EC.invisibility_of_element_located((By.CLASS_NAME, cls)))
 
     def click_edit():
         submit_button = driver.find_elements_by_xpath(
@@ -45,10 +45,10 @@ def process_dandiset(ds):
     # TODO: do not do draft unless there is one
     # TODO: do for a released version
     for urlsuf, page, wait, act in [
-        ('', 'landing', wait_no_progressbar, None),
+        ('', 'landing', partial(wait_no_progressbar, "v-progress-circular"), None),
         # without login I cannot edit metadata, so let it not be used for now
         # (None, 'edit-metadata', None, click_edit),
-        ('/draft/files', 'view-data', None, None)]:
+        ('/draft/files', 'view-data', partial(wait_no_progressbar, "v-progress-linear"), None)]:
 
         page_name = dspath / page
 
@@ -66,7 +66,6 @@ def process_dandiset(ds):
     with (dspath / 'info.yaml').open('w') as f:
         yaml.safe_dump(info, f)
 
-    driver.quit()
     # quick and dirty for now, although should just come from the above "structure"
     return f"""
 ### {ds}
@@ -87,8 +86,12 @@ if __name__ == '__main__':
         doreadme = True
 
     readme = ''
+    driver = webdriver.Chrome()
+    # warm up
+    driver.get(f'https://gui-beta-dandiarchive-org.netlify.app/')
     for ds in dandisets:
-        readme += process_dandiset(ds)
+        readme += process_dandiset(driver, ds)
+    driver.quit()
 
     if doreadme:
         Path('README.md').write_text(readme)
