@@ -13,6 +13,8 @@ from selenium import webdriver
 
 from pathlib import Path
 
+ARCHIVE_GUI = "https://gui-beta-dandiarchive-org.netlify.app"
+
 
 def get_dandisets():
     """Return a list of known dandisets"""
@@ -54,7 +56,7 @@ def process_dandiset(driver, ds):
 
         t0 = time.monotonic()
         if urlsuf is not None:
-            driver.get(f'https://gui-beta-dandiarchive-org.netlify.app/#/dandiset/{ds}{urlsuf}')
+            driver.get(f'{ARCHIVE_GUI}/#/dandiset/{ds}{urlsuf}')
         if act:
             act()
         if wait:
@@ -70,7 +72,7 @@ def process_dandiset(driver, ds):
     return f"""
 ### {ds}
 
-| t={times['landing']:.2f} | t={times['view-data']:.2f} |
+| t={times['landing']:.2f} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}) | t={times['view-data']:.2f} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}/draft/files) |
 | --- | --- |
 | ![]({ds}/landing.png) | ![]({ds}/view-data.png) |
 
@@ -88,11 +90,10 @@ if __name__ == '__main__':
     readme = ''
     driver = webdriver.Chrome()
     # warm up
-    driver.get(f'https://gui-beta-dandiarchive-org.netlify.app/')
+    driver.get(ARCHIVE_GUI)
     for ds in dandisets:
         readme += process_dandiset(driver, ds)
     driver.quit()
 
     if doreadme:
         Path('README.md').write_text(readme)
-
