@@ -65,6 +65,7 @@ def process_dandiset(driver, ds):
         page_name.with_suffix('.html').write_text(driver.page_source)
         driver.save_screenshot(str(page_name.with_suffix('.png')))
 
+
     with (dspath / 'info.yaml').open('w') as f:
         yaml.safe_dump(info, f)
 
