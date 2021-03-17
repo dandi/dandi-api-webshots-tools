@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import time
 
@@ -113,6 +114,7 @@ if __name__ == '__main__':
     driver = webdriver.Chrome()
     # warm up
     driver.get(ARCHIVE_GUI)
+    login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
     for ds in dandisets:
         readme += process_dandiset(driver, ds)
     driver.quit()
