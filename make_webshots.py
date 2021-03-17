@@ -40,6 +40,7 @@ def login(driver, username, password):
         password_field = driver.find_element_by_id("password")
         username_field.send_keys(username)
         password_field.send_keys(password)
+        driver.save_screenshot("logging-in.png")
         driver.find_elements_by_tag_name("form")[0].submit()
 
         WebDriverWait(driver, 30).until(
