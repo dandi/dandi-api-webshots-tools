@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-
+from functools import partial
 import os
+from pathlib import Path
 import sys
 import time
 
-from functools import partial
-import yaml
-
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium import webdriver
-
-from pathlib import Path
+import yaml
 
 ARCHIVE_GUI = "https://gui-beta-dandiarchive-org.netlify.app"
 
