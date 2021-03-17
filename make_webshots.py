@@ -38,8 +38,12 @@ def login(driver, username, password):
     password_field.send_keys(password)
     driver.find_elements_by_tag_name("form")[0].submit()
 
-    WebDriverWait(driver, 30).until(
-        EC.presence_of_element_located((By.CLASS_NAME, "v-avatar")))
+    try:
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "v-avatar")))
+    except Exception:
+        driver.save_screenshot("failure.png")
+        raise
 
 
 def wait_no_progressbar(driver, cls):
