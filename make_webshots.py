@@ -25,20 +25,20 @@ def get_dandisets():
 def login(driver, username, password):
     driver.get(ARCHIVE_GUI)
     wait_no_progressbar(driver, "v-progress-circular")
-    login_button = driver.find_elements_by_xpath(
-        "//*[@id='app']/div/header/div/button[2]"
-    )[0]
-    login_text = login_button.text.strip().lower()
-    assert login_text == "login", f"Login button did not have expected text; expected 'login', got {login_text!r}"
-    login_button.click()
-
-    username_field = driver.find_element_by_id("login_field")
-    password_field = driver.find_element_by_id("password")
-    username_field.send_keys(username)
-    password_field.send_keys(password)
-    driver.find_elements_by_tag_name("form")[0].submit()
-
     try:
+        login_button = driver.find_elements_by_xpath(
+            "//*[@id='app']/div/header/div/button[2]"
+        )[0]
+        login_text = login_button.text.strip().lower()
+        assert login_text == "login", f"Login button did not have expected text; expected 'login', got {login_text!r}"
+        login_button.click()
+
+        username_field = driver.find_element_by_id("login_field")
+        password_field = driver.find_element_by_id("password")
+        username_field.send_keys(username)
+        password_field.send_keys(password)
+        driver.find_elements_by_tag_name("form")[0].submit()
+
         WebDriverWait(driver, 30).until(
             EC.presence_of_element_located((By.CLASS_NAME, "v-avatar")))
     except Exception:
