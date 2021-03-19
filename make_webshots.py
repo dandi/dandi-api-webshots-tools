@@ -22,8 +22,9 @@ def get_dandisets():
     return sorted(x['identifier'] for x in dandisets['results'])
 
 
-def login(driver, username, password):
+def login(driver, username, password, device_id):
     driver.get(ARCHIVE_GUI)
+    driver.add_cookie({"name": "_device_id", "value": device_id})
     wait_no_progressbar(driver, "v-progress-circular")
     try:
         login_button = driver.find_elements_by_xpath(
@@ -119,7 +120,7 @@ if __name__ == '__main__':
     driver = webdriver.Chrome()
     # warm up
     driver.get(ARCHIVE_GUI)
-    login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+    login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"], os.environ["DANDI_DEVICE_ID"])
     for ds in dandisets:
         readme += process_dandiset(driver, ds)
     driver.quit()
