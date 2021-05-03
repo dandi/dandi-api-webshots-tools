@@ -76,8 +76,7 @@ def process_dandiset(driver, ds):
     # TODO: do for a released version
     for urlsuf, page, wait, act in [
         ('', 'landing', partial(wait_no_progressbar, driver, "v-progress-circular"), None),
-        # without login I cannot edit metadata, so let it not be used for now
-        # (None, 'edit-metadata', None, click_edit),
+        (None, 'edit-metadata', partial(wait_no_progressbar, driver, "v-progress-circular"), click_edit),
         ('/draft/files', 'view-data', partial(wait_no_progressbar, driver, "v-progress-linear"), None)]:
 
         page_name = dspath / page
@@ -101,9 +100,9 @@ def process_dandiset(driver, ds):
     return f"""
 ### {ds}
 
-| t={times['landing']:.2f} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}) | t={times['view-data']:.2f} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}/draft/files) |
+| t={times['landing']:.2f} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}) | t={times['edit-metadata']:.2f} Edit Metadata | t={times['view-data']:.2f} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}/draft/files) |
 | --- | --- |
-| ![]({ds}/landing.png) | ![]({ds}/view-data.png) |
+| ![]({ds}/landing.png) | ![]({ds}/edit-metadata.png) | ![]({ds}/view-data.png) |
 
 """
 
