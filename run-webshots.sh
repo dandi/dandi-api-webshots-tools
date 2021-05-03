@@ -16,9 +16,11 @@ fi
 
 . venv/bin/activate
 
+set +x
 . ~/secrets.env
 export DANDI_USERNAME=dandibot
 export DANDI_PASSWORD="$DANDIBOT_GITHUB_PASSWORD"
+set -x
 
 xvfb-run python tools/make_webshots.py
 
