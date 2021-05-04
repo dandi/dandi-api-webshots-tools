@@ -60,8 +60,6 @@ def login(driver, username, password):
 def wait_no_progressbar(driver, cls):
     WebDriverWait(driver, 30).until(
         EC.invisibility_of_element_located((By.CLASS_NAME, cls)))
-    import time
-    time.sleep(3)
 
 
 def process_dandiset(driver, ds):
