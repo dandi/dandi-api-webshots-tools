@@ -114,7 +114,8 @@ def process_dandiset(driver, ds):
         else:
             times[page] = time.monotonic() - t0
             driver.save_screenshot(str(page_name.with_suffix('.png')))
-        page_name.with_suffix('.html').write_text(driver.page_source)
+        # now that we do login, do not bother storing html to not leak anything sensitive by mistake
+        # page_name.with_suffix('.html').write_text(driver.page_source)
 
     with (dspath / 'info.yaml').open('w') as f:
         yaml.safe_dump(info, f)
