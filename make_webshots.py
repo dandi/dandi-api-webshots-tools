@@ -1,25 +1,61 @@
 #!/usr/bin/env python3
+from collections import defaultdict
+from dataclasses import dataclass
 from functools import partial
 import logging
+from operator import attrgetter
 import os
 from pathlib import Path
 import socket
+import statistics
 import sys
 import time
+from typing import List, Optional, Tuple, Union
 
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium.common.exceptions import TimeoutException
 import yaml
 
 log = logging.getLogger(__name__)
 
 ARCHIVE_GUI = "https://gui.dandiarchive.org"
 
+PAGES = ["landing", "edit-metadata", "view-data"]
+
+@dataclass
+class LoadStat:
+    dandiset: str
+    page: str
+    time: Union[float, str]
+    label: str
+    url: Optional[str]
+
+    def get_columns(self) -> Tuple[str, str]:
+        t = self.time if isinstance(self.time, str) else f"{self.time:.2f}"
+        header = f"t={t}"
+        if self.url is not None:
+            header += f" [{self.label}]({self.url})"
+        else:
+            header += f" {self.label}"
+        cell = f"![]({self.dandiset}/{self.page}.png)"
+        return (header, cell)
+
+    def has_time(self) -> bool:
+        return isinstance(self.time, float)
+
+
+def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
+    s = f"### {dandiset}\n\n"
+    header, row = zip(*map(LoadStat.get_columns, stats))
+    s += "| " + " | ".join(header) + " |\n"
+    s += "| --- " * len(stats) + "|\n"
+    s += "| " + " | ".join(row) + " |\n"
+    s += "\n"
+    return s
 
 def get_dandisets():
     """Return a list of known dandisets"""
@@ -79,6 +115,7 @@ def process_dandiset(driver, ds):
 
     info = {'times': {}}
     times = info['times']
+    stats = []
 
     # TODO: do not do draft unless there is one
     # TODO: do for a released version
@@ -106,32 +143,27 @@ def process_dandiset(driver, ds):
                 wait()
                 log.debug("After wait")
         except TimeoutException:
-            times[page] = 'timeout'
+            t = 'timeout'
         except Exception as exc:
-            times[page] = str(exc)
+            t = str(exc).rstrip()
         else:
-            times[page] = time.monotonic() - t0
+            t = time.monotonic() - t0
             time.sleep(2)  # to overcome https://github.com/dandi/dandiarchive/issues/650 - animations etc
             driver.save_screenshot(str(page_name.with_suffix('.png')))
+        times[page] = t
+        stats.append(LoadStat(
+            dandiset=ds,
+            page=page,
+            time=t,
+            label='Edit Metadata' if page == 'edit-metadata' else 'Go to page',
+            url=f'{ARCHIVE_GUI}/#/dandiset/{ds}{urlsuf}' if urlsuf is not None else None,
+        ))
         # now that we do login, do not bother storing html to not leak anything sensitive by mistake
         # page_name.with_suffix('.html').write_text(driver.page_source)
 
     with (dspath / 'info.yaml').open('w') as f:
         yaml.safe_dump(info, f)
-
-    times_ = {
-        k: (v if isinstance(v, str) else '%.2f' % v)
-        for k, v in times.items()
-    }
-    # quick and dirty for now, although should just come from the above "structure"
-    return f"""
-### {ds}
-
-| t={times_['landing']} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}) | t={times_['edit-metadata']} Edit Metadata | t={times_['view-data']} [Go to page]({ARCHIVE_GUI}/#/dandiset/{ds}/draft/files) |
-| --- | --- | --- |
-| ![]({ds}/landing.png) | ![]({ds}/edit-metadata.png) | ![]({ds}/view-data.png) |
-
-"""
+    return stats
 
 
 if __name__ == '__main__':
@@ -165,9 +197,40 @@ if __name__ == '__main__':
     # warm up
     driver.get(ARCHIVE_GUI)
     login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+    allstats = []
     for ds in dandisets:
-        readme += process_dandiset(driver, ds)
+        stats = process_dandiset(driver, ds)
+        readme += render_stats(ds, stats)
+        allstats.extend(stats)
     driver.quit()
 
     if doreadme:
+        stat_tbl = "| Page | Min Time | Mean ± StdDev | Max Time | Errors |\n"
+        stat_tbl += "| --- | --- | --- | --- | --- |\n"
+        page_stats = defaultdict(list)
+        errors = defaultdict(list)
+        for st in allstats:
+            if st.has_time():
+                page_stats[st.page].append(st)
+            else:
+                errors[st.page].append(st.dandiset)
+        for page in PAGES:
+            stats = page_stats[page]
+            if stats:
+                minstat = min(stats, key=attrgetter("time"))
+                min_cell = f"{minstat.time:.2f}s ([{minstat.dandiset}](#{minstat.dandiset}))"
+                times = [st.time for st in stats]
+                mean = statistics.mean(times)
+                stddev = statistics.pstdev(times, mu=mean)
+                mean_stddev = f"{mean:.2f}s ± {stddev:.2f}s"
+                maxstat = max(stats, key=attrgetter("time"))
+                max_cell = f"{maxstat.time:.2f}s ([{maxstat.dandiset}](#{maxstat.dandiset}))"
+            else:
+                min_cell = mean_stddev = max_cell = "\u2014"
+            if errors[page]:
+                errs = ", ".join(f"[{ds}](#{ds})" for ds in errors[page])
+            else:
+                errs = "\u2014"
+            stat_tbl += f"| {page} | {min_cell} | {mean_stddev} | {max_cell} | {errs} |\n"
+        readme = stat_tbl + "\n\n" + readme
         Path('README.md').write_text(readme)
