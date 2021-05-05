@@ -111,6 +111,7 @@ def process_dandiset(driver, ds):
             times[page] = str(exc)
         else:
             times[page] = time.monotonic() - t0
+            time.sleep(2)  # to overcome https://github.com/dandi/dandiarchive/issues/650 - animations etc
             driver.save_screenshot(str(page_name.with_suffix('.png')))
         # now that we do login, do not bother storing html to not leak anything sensitive by mistake
         # page_name.with_suffix('.html').write_text(driver.page_source)
