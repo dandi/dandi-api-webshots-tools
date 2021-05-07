@@ -152,10 +152,6 @@ def process_dandiset(driver, ds):
                 log.debug("Timed out")
                 t = 'timeout'
                 break
-            except Exception as exc:
-                log.warning("Caught unexpected {exc}.")
-                t = str(exc).rstrip()
-                break
             except WebDriverException as exc:
                 t = str(exc).rstrip()  # so even if we continue out of the loop
                 log.warning("Caught {exc}. Reinitializing")
@@ -164,6 +160,10 @@ def process_dandiset(driver, ds):
                 finally:
                     driver = get_ready_driver()
                 continue
+            except Exception as exc:
+                log.warning(f"Caught unexpected {exc}.")
+                t = str(exc).rstrip()
+                break
             else:
                 t = time.monotonic() - t0
                 time.sleep(2)  # to overcome https://github.com/dandi/dandiarchive/issues/650 - animations etc
