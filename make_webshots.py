@@ -194,7 +194,7 @@ if __name__ == '__main__':
     #driver.set_script_timeout(30)
     #driver.implicitly_wait(10)
     # To guarantee that we time out if something gets stuck
-    socket.setdefaulttimeout(30)
+    socket.setdefaulttimeout(300)
     # warm up
     driver.get(ARCHIVE_GUI)
     login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
