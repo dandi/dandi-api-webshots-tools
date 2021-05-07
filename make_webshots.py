@@ -18,6 +18,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.common.exceptions import WebDriverException
 import yaml
 
 log = logging.getLogger(__name__)
@@ -127,30 +128,45 @@ def process_dandiset(driver, ds):
 
         log.info(f"{ds} {page}")
         page_name = dspath / page
-        # so if we fail, we do not carry outdated one
-        page_name.with_suffix('.png').unlink(missing_ok=True)
-        t0 = time.monotonic()
-        try:
-            if urlsuf is not None:
-                log.debug("Before get")
-                driver.get(f'{ARCHIVE_GUI}/#/dandiset/{ds}{urlsuf}')
-                log.debug("After get")
-            if act:
-                log.debug("Before act")
-                act()
-                log.debug("After act")
-            if wait:
-                log.debug("Before wait")
-                wait()
-                log.debug("After wait")
-        except TimeoutException:
-            t = 'timeout'
-        except Exception as exc:
-            t = str(exc).rstrip()
-        else:
-            t = time.monotonic() - t0
-            time.sleep(2)  # to overcome https://github.com/dandi/dandiarchive/issues/650 - animations etc
-            driver.save_screenshot(str(page_name.with_suffix('.png')))
+        # So we could try a few times in case of catching WebDriverException
+        # e.g. as in the case of "invalid session id" whenever we would reinitialize
+        # the entire driver
+        for trial in range(3):
+            # so if we fail, we do not carry outdated one
+            page_name.with_suffix('.png').unlink(missing_ok=True)
+            t0 = time.monotonic()
+            try:
+                if urlsuf is not None:
+                    log.debug("Before get")
+                    driver.get(f'{ARCHIVE_GUI}/#/dandiset/{ds}{urlsuf}')
+                    log.debug("After get")
+                if act:
+                    log.debug("Before act")
+                    act()
+                    log.debug("After act")
+                if wait:
+                    log.debug("Before wait")
+                    wait()
+                    log.debug("After wait")
+            except TimeoutException:
+                t = 'timeout'
+                break
+            except Exception as exc:
+                t = str(exc).rstrip()
+                break
+            except WebDriverException as exc:
+                t = str(exc).rstrip()  # so even if we continue out of the loop
+                log.info("Caught {exc}. Reinitializing")
+                try:
+                    driver.quit()  # cleanup if still can
+                finally:
+                    driver = get_ready_driver()
+                continue
+            else:
+                t = time.monotonic() - t0
+                time.sleep(2)  # to overcome https://github.com/dandi/dandiarchive/issues/650 - animations etc
+                driver.save_screenshot(str(page_name.with_suffix('.png')))
+                break
         times[page] = t
         stats.append(LoadStat(
             dandiset=ds,
@@ -165,6 +181,25 @@ def process_dandiset(driver, ds):
     with (dspath / 'info.yaml').open('w') as f:
         yaml.safe_dump(info, f)
     return stats
+
+
+# to help with "invalid session id" by reinitializing the entire driver
+def get_ready_driver():
+    options = Options()
+    options.add_argument('--no-sandbox')
+    options.add_argument('--headless')
+    options.add_argument('--incognito')
+    #options.add_argument('--disable-gpu')
+    options.add_argument("--window-size=1024,768")
+    options.add_argument('--disable-dev-shm-usage')
+    #driver.set_page_load_timeout(30)
+    #driver.set_script_timeout(30)
+    #driver.implicitly_wait(10)
+    driver = webdriver.Chrome(options=options)
+    login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+    # warm up
+    driver.get(ARCHIVE_GUI)
+    return driver
 
 
 if __name__ == '__main__':
@@ -182,22 +217,9 @@ if __name__ == '__main__':
         doreadme = True
 
     readme = ''
-    options = Options()
-    options.add_argument('--no-sandbox')
-    options.add_argument('--headless')
-    options.add_argument('--incognito')
-    #options.add_argument('--disable-gpu')
-    options.add_argument("--window-size=1024,768")
-    options.add_argument('--disable-dev-shm-usage')
-    driver = webdriver.Chrome(options=options)
-    #driver.set_page_load_timeout(30)
-    #driver.set_script_timeout(30)
-    #driver.implicitly_wait(10)
     # To guarantee that we time out if something gets stuck
     socket.setdefaulttimeout(300)
-    # warm up
-    driver.get(ARCHIVE_GUI)
-    login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+    driver = get_ready_driver()
     allstats = []
     for ds in dandisets:
         stats = process_dandiset(driver, ds)
