@@ -106,7 +106,8 @@ def process_dandiset(driver, ds):
         edit_button = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable(
                 (By.XPATH,
-                 '//*[@id="app"]/div/main/div/div/div/div/div[1]/div/div[2]/div[1]/div[3]/button[1]')))
+                 '//*[@id="app"]/div/main/div/div/div/div/div[1]/div/div[2]/div[1]/button[2]'
+                 )))
         edit_button.click()
 
     dspath = Path(ds)
