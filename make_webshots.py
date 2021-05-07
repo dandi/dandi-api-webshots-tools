@@ -77,7 +77,7 @@ def login(driver, username, password):
         assert login_text == "login or create account", f"Login button did not have expected text; expected 'login', got {login_text!r}"
         login_button.click()
 
-        WebDriverWait(driver, 30).until(
+        WebDriverWait(driver, 300).until(
             EC.presence_of_element_located((By.ID, "login_field")))
 
         username_field = driver.find_element_by_id("login_field")
@@ -87,7 +87,7 @@ def login(driver, username, password):
         #driver.save_screenshot("logging-in.png")
         driver.find_elements_by_tag_name("form")[0].submit()
 
-        WebDriverWait(driver, 30).until(
+        WebDriverWait(driver, 300).until(
             EC.presence_of_element_located((By.CLASS_NAME, "v-avatar")))
     except Exception:
         #driver.save_screenshot("failure.png")
@@ -95,7 +95,7 @@ def login(driver, username, password):
 
 
 def wait_no_progressbar(driver, cls):
-    WebDriverWait(driver, 30).until(
+    WebDriverWait(driver, 300).until(
         EC.invisibility_of_element_located((By.CLASS_NAME, cls)))
 
 
@@ -154,7 +154,7 @@ def process_dandiset(driver, ds):
                 break
             except WebDriverException as exc:
                 t = str(exc).rstrip()  # so even if we continue out of the loop
-                log.warning("Caught {exc}. Reinitializing")
+                log.warning(f"Caught {exc}. Reinitializing")
                 # it might be a reason for subsequent "Max retries exceeded"
                 # since it closes "too much"
                 #try:
