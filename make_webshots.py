@@ -155,10 +155,12 @@ def process_dandiset(driver, ds):
             except WebDriverException as exc:
                 t = str(exc).rstrip()  # so even if we continue out of the loop
                 log.warning("Caught {exc}. Reinitializing")
-                try:
-                    driver.quit()  # cleanup if still can
-                finally:
-                    driver = get_ready_driver()
+                # it might be a reason for subsequent "Max retries exceeded"
+                # since it closes "too much"
+                #try:
+                #    driver.quit()  # cleanup if still can
+                #finally:
+                driver = get_ready_driver()
                 continue
             except Exception as exc:
                 log.warning(f"Caught unexpected {exc}.")
