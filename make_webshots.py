@@ -149,14 +149,16 @@ def process_dandiset(driver, ds):
                     wait()
                     log.debug("After wait")
             except TimeoutException:
+                log.debug("Timed out")
                 t = 'timeout'
                 break
             except Exception as exc:
+                log.warning("Caught unexpected {exc}.")
                 t = str(exc).rstrip()
                 break
             except WebDriverException as exc:
                 t = str(exc).rstrip()  # so even if we continue out of the loop
-                log.info("Caught {exc}. Reinitializing")
+                log.warning("Caught {exc}. Reinitializing")
                 try:
                     driver.quit()  # cleanup if still can
                 finally:
@@ -206,7 +208,7 @@ if __name__ == '__main__':
     logging.basicConfig(
         format="%(asctime)s [%(levelname)-8s] %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S%z",
-        level=logging.ERROR,
+        level=logging.INFO,
     )
 
     if len(sys.argv) > 1:
