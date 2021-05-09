@@ -137,9 +137,9 @@ def process_dandiset(driver, ds):
             # ad-hoc workaround for https://github.com/dandi/dandiarchive/issues/662
             # with hope it is the only one and to not overcomplicate things
             # so if we fail, we do not carry outdated one
-            if ds in ('000040', '000041') and page == 'edit-metadata':
-                t = "timeout/crash"
-                break
+            #if ds in ('000040', '000041') and page == 'edit-metadata':
+            #    t = "timeout/crash"
+            #    break
             try:
                 if urlsuf is not None:
                     log.debug("Before get")
