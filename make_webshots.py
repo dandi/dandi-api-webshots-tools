@@ -132,9 +132,14 @@ def process_dandiset(driver, ds):
         # e.g. as in the case of "invalid session id" whenever we would reinitialize
         # the entire driver
         for trial in range(3):
-            # so if we fail, we do not carry outdated one
             page_name.with_suffix('.png').unlink(missing_ok=True)
             t0 = time.monotonic()
+            # ad-hoc workaround for https://github.com/dandi/dandiarchive/issues/662
+            # with hope it is the only one and to not overcomplicate things
+            # so if we fail, we do not carry outdated one
+            if ds in ('000040', '000041') and page == 'edit-metadata':
+                t = "timeout/crash"
+                break
             try:
                 if urlsuf is not None:
                     log.debug("Before get")
@@ -153,6 +158,9 @@ def process_dandiset(driver, ds):
                 t = 'timeout'
                 break
             except WebDriverException as exc:
+                # do not bother trying to resurrect - it seems to not working really based on
+                # 000040 timeout experience
+                raise
                 t = str(exc).rstrip()  # so even if we continue out of the loop
                 log.warning(f"Caught {exc}. Reinitializing")
                 # it might be a reason for subsequent "Max retries exceeded"
@@ -226,6 +234,9 @@ if __name__ == '__main__':
     driver = get_ready_driver()
     allstats = []
     for ds in dandisets:
+        # TEMP: to quickly test on a subset
+        # if int(ds) < 40:
+        #     continue
         stats = process_dandiset(driver, ds)
         readme += render_stats(ds, stats)
         allstats.extend(stats)
