@@ -202,7 +202,7 @@ def get_ready_driver():
     options.add_argument('--headless')
     options.add_argument('--incognito')
     #options.add_argument('--disable-gpu')
-    options.add_argument("--window-size=1024,768")
+    options.add_argument("--window-size=1024,1400")
     options.add_argument('--disable-dev-shm-usage')
     #driver.set_page_load_timeout(30)
     #driver.set_script_timeout(30)
