@@ -71,7 +71,7 @@ def login(driver, username, password):
     wait_no_progressbar(driver, "v-progress-circular")
     try:
         login_button = driver.find_elements_by_xpath(
-            "//*[@id='app']/div/header/div/button[2]"
+            "//button[@id='login']"
         )[0]
         login_text = login_button.text.strip().lower()
         assert login_text == "login or create account", f"Login button did not have expected text; expected 'login', got {login_text!r}"
@@ -107,7 +107,7 @@ def process_dandiset(driver, ds):
         edit_button = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable(
                 (By.XPATH,
-                 '//*[@id="app"]/div/main/div/div/div/div/div[1]/div/div[2]/div[1]/button[2]'
+                 '//button[@id="view-edit-metadata"]'
                  )))
         edit_button.click()
 
