@@ -95,7 +95,7 @@ def login(driver, username, password):
 
 
 def wait_no_progressbar(driver, cls):
-    WebDriverWait(driver, 300).until(
+    WebDriverWait(driver, 300, poll_frequency=0.1).until(
         EC.invisibility_of_element_located((By.CLASS_NAME, cls)))
 
 
