@@ -74,7 +74,8 @@ def login(driver, username, password):
             "//button[@id='login']"
         )[0]
         login_text = login_button.text.strip().lower()
-        assert login_text == "login or create account", f"Login button did not have expected text; expected 'login', got {login_text!r}"
+        assert "log in" in login_text.lower(), \
+            f"Login button did not have expected text; expected 'log in', got {login_text!r}"
         login_button.click()
 
         WebDriverWait(driver, 300).until(
