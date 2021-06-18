@@ -88,8 +88,17 @@ def login(driver, username, password):
         #driver.save_screenshot("logging-in.png")
         driver.find_elements_by_tag_name("form")[0].submit()
 
-        WebDriverWait(driver, 300).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "v-avatar")))
+        # Here we might get "Authorize" dialog or not
+        # Solution based on https://stackoverflow.com/a/61895999/1265472
+        # chose as the most straight-forward
+        for i in range(2):
+            el = WebDriverWait(driver, 300).until(
+                lambda driver: driver.find_elements(By.XPATH, '//input[@value="Authorize"]') or
+                               driver.find_elements_by_class_name("v-avatar"))[0]
+            if getattr(el, "tag_name") == 'input':
+                el.click()
+            else:
+                break
     except Exception:
         #driver.save_screenshot("failure.png")
         raise
