@@ -27,6 +27,10 @@ ARCHIVE_GUI = "https://gui.dandiarchive.org"
 
 PAGES = ["landing", "edit-metadata", "view-data"]
 
+# set to True to fetch the logs, not enabled by default
+FETCH_CONSOLE_LOGS = False
+
+
 @dataclass
 class LoadStat:
     dandiset: str
@@ -62,7 +66,7 @@ def get_dandisets():
     """Return a list of known dandisets"""
     from dandi.dandiapi import DandiAPIClient
     client = DandiAPIClient('https://api.dandiarchive.org/api')
-    dandisets = client.get('/dandisets', parameters={'page_size': 10000})
+    dandisets = client.get('/dandisets', params={'page_size': 10000})
     return sorted(x['identifier'] for x in dandisets['results'])
 
 
@@ -108,6 +112,26 @@ def wait_no_progressbar(driver, cls):
     WebDriverWait(driver, 300, poll_frequency=0.1).until(
         EC.invisibility_of_element_located((By.CLASS_NAME, cls)))
 
+def fetch_logs(driver, filename=None):
+    """Given current state of the browser logs, fetch them and (if filename provided) save to a file
+
+    Only new logs are fetch in subsequent invocation, so just use fetch_logs to swallow
+    all you do not care about.
+
+    `filename` can have some other extension, will be replaced with .yaml
+
+    Logs are dumped only if any.  file (under filename) is removed first regardless.
+    """
+    if not FETCH_CONSOLE_LOGS:
+        return
+    logs = driver.get_log('browser')
+    if filename:
+        fileobj = Path(filename).with_suffix('.yaml')
+        fileobj.unlink(missing_ok=True)
+        if logs:
+            with fileobj.open('w') as f:
+                yaml.safe_dump(logs, f)
+    return logs
 
 def process_dandiset(driver, ds):
 
@@ -188,6 +212,7 @@ def process_dandiset(driver, ds):
                 t = time.monotonic() - t0
                 time.sleep(2)  # to overcome https://github.com/dandi/dandiarchive/issues/650 - animations etc
                 driver.save_screenshot(str(page_name.with_suffix('.png')))
+                fetch_logs(driver, page_name)
                 break
         times[page] = t
         stats.append(LoadStat(
@@ -242,6 +267,7 @@ if __name__ == '__main__':
     # To guarantee that we time out if something gets stuck
     socket.setdefaulttimeout(300)
     driver = get_ready_driver()
+    fetch_logs(driver, "initial_log")
     allstats = []
     for ds in dandisets:
         # TEMP: to quickly test on a subset
