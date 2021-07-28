@@ -199,10 +199,10 @@ def process_dandiset(driver, ds):
                 log.warning(f"Caught {exc}. Reinitializing")
                 # it might be a reason for subsequent "Max retries exceeded"
                 # since it closes "too much"
-                #try:
-                #    driver.quit()  # cleanup if still can
-                #finally:
-                driver = get_ready_driver()
+                try:
+                    driver.quit()  # cleanup if still can
+                finally:
+                    driver = get_ready_driver()
                 continue
             except Exception as exc:
                 log.warning(f"Caught unexpected {exc}.")
@@ -269,14 +269,16 @@ if __name__ == '__main__':
     driver = get_ready_driver()
     fetch_logs(driver, "initial_log")
     allstats = []
-    for ds in dandisets:
-        # TEMP: to quickly test on a subset
-        # if int(ds) < 40:
-        #     continue
-        stats = process_dandiset(driver, ds)
-        readme += render_stats(ds, stats)
-        allstats.extend(stats)
-    driver.quit()
+    try:
+        for ds in dandisets:
+            # TEMP: to quickly test on a subset
+            # if int(ds) < 40:
+            #     continue
+            stats = process_dandiset(driver, ds)
+            readme += render_stats(ds, stats)
+            allstats.extend(stats)
+    finally:
+        driver.quit()
 
     if doreadme:
         stat_tbl = "| Page | Min Time | Mean ± StdDev | Max Time | Errors |\n"
