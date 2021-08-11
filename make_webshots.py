@@ -65,7 +65,7 @@ def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
 class Webshotter:
     def __init__(self, dandi_instance_name: str):
         self.dandi_instance_name = dandi_instance_name
-        self.driver = self.get_driver()
+        self.set_driver()
 
     def __enter__(self):
         return self
@@ -77,7 +77,7 @@ class Webshotter:
     def gui_url(self) -> str:
         return known_instances[self.dandi_instance_name].gui
 
-    def get_driver(self):
+    def set_driver(self):
         options = Options()
         options.add_argument("--no-sandbox")
         options.add_argument("--headless")
@@ -88,41 +88,40 @@ class Webshotter:
         # driver.set_page_load_timeout(30)
         # driver.set_script_timeout(30)
         # driver.implicitly_wait(10)
-        driver = webdriver.Chrome(options=options)
-        self.login(driver, os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+        self.driver = webdriver.Chrome(options=options)
+        self.login(os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
         # warm up
-        driver.get(self.gui_url)
-        return driver
+        self.driver.get(self.gui_url)
 
-    def login(self, driver, username, password):
-        driver.get(self.gui_url)
+    def login(self, username, password):
+        self.driver.get(self.gui_url)
         self.wait_no_progressbar("v-progress-circular")
-        login_button = driver.find_elements_by_xpath("//button[@id='login']")[0]
+        login_button = self.driver.find_elements_by_xpath("//button[@id='login']")[0]
         login_text = login_button.text.strip().lower()
         assert "log in" in login_text.lower(), (
             "Login button did not have expected text; expected 'log in',"
             f" got {login_text!r}"
         )
         login_button.click()
-        WebDriverWait(driver, 300).until(
+        WebDriverWait(self.driver, 300).until(
             EC.presence_of_element_located((By.ID, "login_field"))
         )
-        username_field = driver.find_element_by_id("login_field")
-        password_field = driver.find_element_by_id("password")
+        username_field = self.driver.find_element_by_id("login_field")
+        password_field = self.driver.find_element_by_id("password")
         username_field.send_keys(username)
         password_field.send_keys(password)
-        # driver.save_screenshot("logging-in.png")
-        driver.find_elements_by_tag_name("form")[0].submit()
+        # self.driver.save_screenshot("logging-in.png")
+        self.driver.find_elements_by_tag_name("form")[0].submit()
 
         # Here we might get "Authorize" dialog or not
         # Solution based on https://stackoverflow.com/a/61895999/1265472
         # chose as the most straight-forward
         for _ in range(2):
-            el = WebDriverWait(driver, 300).until(
+            el = WebDriverWait(self.driver, 300).until(
                 lambda driver: driver.find_elements(
                     By.XPATH, '//input[@value="Authorize"]'
                 )
-                or driver.find_elements_by_class_name("v-avatar")
+                or self.driver.find_elements_by_class_name("v-avatar")
             )[0]
             if el.tag_name == "input":
                 el.click()
@@ -133,7 +132,7 @@ class Webshotter:
         try:
             self.driver.quit()  # cleanup if still can
         finally:
-            self.driver = self.get_driver()
+            self.set_driver()
 
     def wait_no_progressbar(self, cls):
         WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
