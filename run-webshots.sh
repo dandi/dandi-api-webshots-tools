@@ -11,6 +11,8 @@ git clean -df
 git checkout master
 git pull
 
+( cd tools; git checkout master; git pull )
+
 if [ ! -e venv ]
 then $PYTHON -m virtualenv venv
      venv/bin/pip install -r tools/requirements.txt
