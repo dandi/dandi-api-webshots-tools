@@ -1,4 +1,5 @@
-dandi
+click >= 7.0
+dandi >= 0.24.0
 pyyaml
 selenium
 

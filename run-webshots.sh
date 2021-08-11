@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+DANDI_INSTANCE="${1:?Usage: $0 <dandi-instance>}"
+
 PYTHON=$HOME/miniconda3/bin/python
 
 cd "$(dirname "$0")"/..
@@ -22,7 +24,7 @@ export DANDI_USERNAME=dandibot
 export DANDI_PASSWORD="$DANDIBOT_GITHUB_PASSWORD"
 set -x
 
-xvfb-run python tools/make_webshots.py
+xvfb-run python tools/make_webshots.py -i "$DANDI_INSTANCE"
 
 git add .
 if ! git diff --quiet --cached
