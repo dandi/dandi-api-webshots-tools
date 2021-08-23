@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from functools import partial
+import itertools
 import logging
 from operator import attrgetter
 import os
@@ -12,6 +14,7 @@ import time
 from typing import List, Optional, Tuple, Union
 
 import click
+from click_loglevel import LogLevel
 from dandi.consts import known_instances
 from dandi.dandiapi import DandiAPIClient
 from selenium import webdriver
@@ -23,8 +26,6 @@ from selenium.webdriver.support.wait import WebDriverWait
 import yaml
 
 log = logging.getLogger(__name__)
-
-PAGES = ["landing", "edit-metadata", "view-data"]
 
 # set to True to fetch the logs, not enabled by default
 FETCH_CONSOLE_LOGS = False
@@ -163,115 +164,71 @@ class Webshotter:
                     yaml.safe_dump(logs, f)
         return logs
 
-    def click_edit(self):
-        # might still take a bit to appear
-        # TODO: more sensible way to "identify" it:
-        # https://github.com/dandi/dandiarchive/issues/648
-        edit_button = WebDriverWait(self.driver, 3).until(
-            EC.element_to_be_clickable((By.XPATH, '//button[@id="view-edit-metadata"]'))
-        )
-        edit_button.click()
-
-    def process_dandiset(self, ds):
-        dspath = Path(ds)
-        dspath.mkdir(parents=True, exist_ok=True)
-        info = {"times": {}}
-        times = info["times"]
-        stats = []
+    def process_dandiset_page(self, ds, urlsuf, page, wait_cls, act):
         # TODO: do not do draft unless there is one
         # TODO: do for a released version
-        for urlsuf, page, wait, act in [
-            (
-                "",
-                "landing",
-                partial(self.wait_no_progressbar, "v-progress-circular"),
-                None,
-            ),
-            (
-                None,
-                "edit-metadata",
-                partial(self.wait_no_progressbar, "v-progress-circular"),
-                self.click_edit,
-            ),
-            (
-                "/draft/files",
-                "view-data",
-                partial(self.wait_no_progressbar, "v-progress-linear"),
-                None,
-            ),
-        ]:
-            log.info("%s %s", ds, page)
-            page_name = dspath / page
-            # So we could try a few times in case of catching WebDriverException
-            # e.g. as in the case of "invalid session id" whenever we would
-            # reinitialize the entire driver
-            for _ in range(3):
-                page_name.with_suffix(".png").unlink(missing_ok=True)
-                t0 = time.monotonic()
-                # ad-hoc workaround for https://github.com/dandi/dandiarchive/issues/662
-                # with hope it is the only one and to not overcomplicate things
-                # so if we fail, we do not carry outdated one
-                # if ds in ('000040', '000041') and page == 'edit-metadata':
-                #    t = "timeout/crash"
-                #    break
-                try:
-                    if urlsuf is not None:
-                        log.debug("Before get")
-                        self.driver.get(f"{self.gui_url}/#/dandiset/{ds}{urlsuf}")
-                        log.debug("After get")
-                    if act:
-                        log.debug("Before act")
-                        act()
-                        log.debug("After act")
-                    if wait:
-                        log.debug("Before wait")
-                        wait()
-                        log.debug("After wait")
-                except TimeoutException:
-                    log.debug("Timed out")
-                    t = "timeout"
-                    break
-                except WebDriverException as exc:
-                    # do not bother trying to resurrect - it seems to not
-                    # working really based on 000040 timeout experience
-                    raise
-                    t = str(exc).rstrip()  # so even if we continue out of the loop
-                    log.warning("Caught %s. Reinitializing", str(exc))
-                    # it might be a reason for subsequent "Max retries exceeded"
-                    # since it closes "too much"
-                    self.reset_driver()
-                    continue
-                except Exception as exc:
-                    log.warning("Caught unexpected %s.", str(exc))
-                    t = str(exc).rstrip()
-                    break
-                else:
-                    t = time.monotonic() - t0
-                    # to overcome
-                    # https://github.com/dandi/dandiarchive/issues/650 -
-                    # animations etc:
-                    time.sleep(2)
-                    self.driver.save_screenshot(str(page_name.with_suffix(".png")))
-                    self.fetch_logs(page_name)
-                    break
-            times[page] = t
-            stats.append(
-                LoadStat(
-                    dandiset=ds,
-                    page=page,
-                    time=t,
-                    label="Edit Metadata" if page == "edit-metadata" else "Go to page",
-                    url=f"{self.gui_url}/#/dandiset/{ds}{urlsuf}"
-                    if urlsuf is not None
-                    else None,
-                )
-            )
-            # now that we do login, do not bother storing html to not leak
-            # anything sensitive by mistake
-            # page_name.with_suffix('.html').write_text(self.driver.page_source)
-        with (dspath / "info.yaml").open("w") as f:
-            yaml.safe_dump(info, f)
-        return stats
+        log.info("%s %s", ds, page)
+        page_name = Path(ds, page)
+        # So we could try a few times in case of catching WebDriverException
+        # e.g. as in the case of "invalid session id" whenever we would
+        # reinitialize the entire driver
+        for _ in range(3):
+            page_name.with_suffix(".png").unlink(missing_ok=True)
+            t0 = time.monotonic()
+            # ad-hoc workaround for https://github.com/dandi/dandiarchive/issues/662
+            # with hope it is the only one and to not overcomplicate things so
+            # if we fail, we do not carry outdated one
+            # if ds in ('000040', '000041') and page == 'edit-metadata':
+            #    t = "timeout/crash"
+            #    break
+            try:
+                if urlsuf is not None:
+                    log.debug("Before get")
+                    self.driver.get(f"{self.gui_url}/#/dandiset/{ds}{urlsuf}")
+                    log.debug("After get")
+                if act is not None:
+                    log.debug("Before act")
+                    act(self.driver)
+                    log.debug("After act")
+                if wait_cls is not None:
+                    log.debug("Before wait")
+                    self.wait_no_progressbar("v-progress-circular")
+                    log.debug("After wait")
+            except TimeoutException:
+                log.debug("Timed out")
+                t = "timeout"
+                break
+            except WebDriverException as exc:
+                # do not bother trying to resurrect - it seems to not working
+                # really based on 000040 timeout experience
+                raise
+                t = str(exc).rstrip()  # so even if we continue out of the loop
+                log.warning("Caught %s. Reinitializing", str(exc))
+                # it might be a reason for subsequent "Max retries exceeded"
+                # since it closes "too much"
+                self.reset_driver()
+                continue
+            except Exception as exc:
+                log.warning("Caught unexpected %s.", str(exc))
+                t = str(exc).rstrip()
+                break
+            else:
+                t = time.monotonic() - t0
+                # to overcome https://github.com/dandi/dandiarchive/issues/650
+                # - animations etc:
+                time.sleep(2)
+                self.driver.save_screenshot(str(page_name.with_suffix(".png")))
+                self.fetch_logs(page_name)
+                break
+        return LoadStat(
+            dandiset=ds,
+            page=page,
+            time=t,
+            label="Edit Metadata" if page == "edit-metadata" else "Go to page",
+            url=f"{self.gui_url}/#/dandiset/{ds}{urlsuf}"
+            if urlsuf is not None
+            else None,
+        )
 
 
 def get_dandisets(dandi_instance):
@@ -279,6 +236,37 @@ def get_dandisets(dandi_instance):
     with DandiAPIClient.for_dandi_instance(dandi_instance) as client:
         for d in sorted(client.get_dandisets(), key=attrgetter("identifier")):
             yield d.identifier
+
+
+def click_edit(driver):
+    # might still take a bit to appear
+    # TODO: more sensible way to "identify" it:
+    # https://github.com/dandi/dandiarchive/issues/648
+    edit_button = WebDriverWait(driver, 3).until(
+        EC.element_to_be_clickable((By.XPATH, '//button[@id="view-edit-metadata"]'))
+    )
+    edit_button.click()
+
+
+PAGES = {
+    "landing": ("", "v-progress-circular", None),
+    "edit-metadata": (None, "v-progress-circular", click_edit),
+    "view-data": ("/draft/files", "v-progress-linear", None),
+}
+
+
+def snapshot_page(dandi_instance, log_level, ds_page):
+    logging.basicConfig(
+        format="%(asctime)s [%(levelname)-8s] %(process)d %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+        level=log_level,
+    )
+    # To guarantee that we time out if something gets stuck:
+    socket.setdefaulttimeout(300)
+    ds, page = ds_page
+    urlsuf, wait_cls, act = PAGES[page]
+    with Webshotter(dandi_instance) as ws:
+        return ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
 
 
 @click.command()
@@ -290,33 +278,43 @@ def get_dandisets(dandi_instance):
     default="dandi",
     show_default=True,
 )
+@click.option(
+    "-l",
+    "--log-level",
+    type=LogLevel(),
+    default=logging.INFO,
+    help="Set logging level  [default: INFO]",
+)
 @click.argument("dandisets", nargs=-1)
-def main(dandi_instance, dandisets):
-    logging.basicConfig(
-        format="%(asctime)s [%(levelname)-8s] %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S%z",
-        level=logging.INFO,
-    )
+def main(dandi_instance, dandisets, log_level):
     if dandisets:
         doreadme = False
     else:
-        dandisets = get_dandisets(dandi_instance)
+        dandisets = list(get_dandisets(dandi_instance))
         doreadme = True
+    for ds in dandisets:
+        Path(ds).mkdir(parents=True, exist_ok=True)
 
+    # with Webshotter(dandi_instance) as ws:
+    #     ws.fetch_logs("initial_log")
+
+    statdict = defaultdict(dict)
+    with ProcessPoolExecutor(max_workers=1) as executor:
+        for stat in executor.map(
+            partial(snapshot_page, dandi_instance, log_level),
+            itertools.product(dandisets, PAGES.keys()),
+        ):
+            statdict[stat.dandiset][stat.page] = stat
+
+    allstats = []
     readme = ""
-    # To guarantee that we time out if something gets stuck
-    socket.setdefaulttimeout(300)
-
-    with Webshotter(dandi_instance) as ws:
-        ws.fetch_logs("initial_log")
-        allstats = []
-        for ds in dandisets:
-            # TEMP: to quickly test on a subset
-            # if int(ds) < 40:
-            #     continue
-            stats = ws.process_dandiset(ds)
-            readme += render_stats(ds, stats)
-            allstats.extend(stats)
+    for ds, raw_stats in sorted(statdict.items()):
+        stats = [raw_stats[p] for p in PAGES.keys()]
+        times = {st.page: st.time for st in stats}
+        with Path(ds, "info.yaml").open("w") as f:
+            yaml.safe_dump({"times": times}, f)
+        readme += render_stats(ds, stats)
+        allstats.extend(stats)
 
     if doreadme:
         stat_tbl = "| Page | Min Time | Mean ± StdDev | Max Time | Errors |\n"
@@ -328,7 +326,7 @@ def main(dandi_instance, dandisets):
                 page_stats[st.page].append(st)
             else:
                 errors[st.page].append(st.dandiset)
-        for page in PAGES:
+        for page in PAGES.keys():
             stats = page_stats[page]
             if stats:
                 minstat = min(stats, key=attrgetter("time"))
