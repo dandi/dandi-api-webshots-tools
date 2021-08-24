@@ -186,13 +186,20 @@ class Webshotter:
                     log.debug("Before get")
                     self.driver.get(f"{self.gui_url}/#/dandiset/{ds}{urlsuf}")
                     log.debug("After get")
+                else:
+                    log.debug("Before get")
+                    self.driver.get(f"{self.gui_url}/#/dandiset/{ds}")
+                    log.debug("After get")
+                    log.debug("Before initial wait")
+                    self.wait_no_progressbar("v-progress-circular")
+                    log.debug("After initial wait")
                 if act is not None:
                     log.debug("Before act")
                     act(self.driver)
                     log.debug("After act")
                 if wait_cls is not None:
                     log.debug("Before wait")
-                    self.wait_no_progressbar("v-progress-circular")
+                    self.wait_no_progressbar(wait_cls)
                     log.debug("After wait")
             except TimeoutException:
                 log.debug("Timed out")
