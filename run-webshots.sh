@@ -15,8 +15,8 @@ git pull
 
 if [ ! -e venv ]
 then $PYTHON -m virtualenv venv
-     venv/bin/pip install -r tools/requirements.txt
 fi
+venv/bin/pip install -r tools/requirements.txt
 
 . venv/bin/activate
 
