@@ -64,8 +64,8 @@ def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
 
 
 class Webshotter:
-    def __init__(self, dandi_instance_name: str):
-        self.dandi_instance_name = dandi_instance_name
+    def __init__(self, gui_url: str):
+        self.gui_url = gui_url
         self.set_driver()
 
     def __enter__(self):
@@ -73,10 +73,6 @@ class Webshotter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.driver.quit()
-
-    @property
-    def gui_url(self) -> str:
-        return known_instances[self.dandi_instance_name].gui
 
     def set_driver(self):
         options = Options()
@@ -203,8 +199,7 @@ class Webshotter:
                     log.debug("After wait")
             except TimeoutException:
                 log.debug("Timed out")
-                t = "timeout"
-                break
+                return "timeout"
             except WebDriverException as exc:
                 # do not bother trying to resurrect - it seems to not working
                 # really based on 000040 timeout experience
@@ -217,8 +212,7 @@ class Webshotter:
                 continue
             except Exception as exc:
                 log.warning("Caught unexpected %s.", str(exc))
-                t = str(exc).rstrip()
-                break
+                return str(exc).rstrip()
             else:
                 t = time.monotonic() - t0
                 # to overcome https://github.com/dandi/dandiarchive/issues/650
@@ -226,16 +220,7 @@ class Webshotter:
                 time.sleep(2)
                 self.driver.save_screenshot(str(page_name.with_suffix(".png")))
                 self.fetch_logs(page_name)
-                break
-        return LoadStat(
-            dandiset=ds,
-            page=page,
-            time=t,
-            label="Edit Metadata" if page == "edit-metadata" else "Go to page",
-            url=f"{self.gui_url}/#/dandiset/{ds}{urlsuf}"
-            if urlsuf is not None
-            else None,
-        )
+                return t
 
 
 def get_dandisets(dandi_instance):
@@ -270,10 +255,27 @@ def snapshot_page(dandi_instance, log_level, ds_page):
     )
     # To guarantee that we time out if something gets stuck:
     socket.setdefaulttimeout(300)
+    gui_url = known_instances[dandi_instance].gui
     ds, page = ds_page
     urlsuf, wait_cls, act = PAGES[page]
-    with Webshotter(dandi_instance) as ws:
-        return ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
+    try:
+        with Webshotter(gui_url) as ws:
+            t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
+    except TimeoutException:
+        # This can happen if a timeout occurs inside the Webshotter constructor
+        # (e.g., when trying to log in)
+        log.debug("Startup timed out")
+        t = "timeout"
+    except WebDriverException as exc:
+        log.warning("Caught %s", str(exc))
+        t = str(exc).rstrip()
+    return LoadStat(
+        dandiset=ds,
+        page=page,
+        time=t,
+        label="Edit Metadata" if page == "edit-metadata" else "Go to page",
+        url=f"{gui_url}/#/dandiset/{ds}{urlsuf}" if urlsuf is not None else None,
+    )
 
 
 @click.command()
