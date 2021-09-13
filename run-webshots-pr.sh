@@ -23,6 +23,7 @@ venv/bin/pip install -r tools/requirements.txt
 . venv/bin/activate
 
 set +x
+GITHUB_TOKEN="$(git config hub.oauthtoken)"
 . ~/secrets.env
 export DANDI_USERNAME=dandibot
 export DANDI_PASSWORD="$DANDIBOT_GITHUB_PASSWORD"
@@ -44,12 +45,19 @@ do
         then state=success
         else state=failure
         fi
-        python tools/set-pr-status.py \
-            -R "$CODE_REPO" \
-            --pr "$pr" \
-            --context Webshots \
-            --state "$state" \
-            --target-url "https://github.com/$WEBSHOTS_REPO/tree/pr-$pr"
+
+        jq -n \
+            --arg state "$state" \
+            --arg target_url "https://github.com/$WEBSHOTS_REPO/tree/pr-$pr" \
+            '{
+                "state": $state,
+                "context": "Webshots",
+                "target_url": $target_url
+            }' \
+        | curl -fsSL -X POST -d @- \
+            -H "Authorization: bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/$CODE_REPO/statuses/$pr_head"
 
         git add .
         if ! git diff --quiet --cached
