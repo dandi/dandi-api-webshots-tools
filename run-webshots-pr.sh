@@ -65,7 +65,7 @@ do
              git push -u origin "pr-$pr"
         else echo "No changes to commit"
         fi
-    else "No change to PR $pr; doing nothing"
+    else echo "No change to PR $pr; doing nothing"
     fi
 done
 
