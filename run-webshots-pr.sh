@@ -30,7 +30,7 @@ set -x
 for pr
 do
     git checkout "pr-$pr" || git checkout -b "pr-$pr"
-    pr_head="$(curl -fsSL "https://api.github.com/repos/$CODE_REPO/pulls/$pr" | jq -r .head.sha)"
+    pr_head="$(set -o pipefail; curl -fsSL "https://api.github.com/repos/$CODE_REPO/pulls/$pr" | jq -r .head.sha)"
     if [ ! -e pr-head.txt ] || [ "$pr_head" != "$(< pr-head.txt)" ]
     then
         echo "$pr_head" > pr-head.txt
