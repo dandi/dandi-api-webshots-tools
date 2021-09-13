@@ -247,7 +247,7 @@ PAGES = {
 }
 
 
-def snapshot_page(dandi_instance, log_level, ds_page):
+def snapshot_page(dandi_instance, gui_url, log_level, ds_page):
     logging.basicConfig(
         format="%(asctime)s [%(levelname)-8s] %(process)d %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S%z",
@@ -255,7 +255,8 @@ def snapshot_page(dandi_instance, log_level, ds_page):
     )
     # To guarantee that we time out if something gets stuck:
     socket.setdefaulttimeout(300)
-    gui_url = known_instances[dandi_instance].gui
+    if gui_url is None:
+        gui_url = known_instances[dandi_instance].gui
     ds, page = ds_page
     urlsuf, wait_cls, act = PAGES[page]
     try:
@@ -279,6 +280,7 @@ def snapshot_page(dandi_instance, log_level, ds_page):
 
 
 @click.command()
+@click.option("--gui-url", help="Dandi Archive GUI URL")
 @click.option(
     "-i",
     "--dandi-instance",
@@ -295,7 +297,7 @@ def snapshot_page(dandi_instance, log_level, ds_page):
     help="Set logging level  [default: INFO]",
 )
 @click.argument("dandisets", nargs=-1)
-def main(dandi_instance, dandisets, log_level):
+def main(dandi_instance, gui_url, dandisets, log_level):
     if dandisets:
         doreadme = False
     else:
@@ -310,7 +312,7 @@ def main(dandi_instance, dandisets, log_level):
     statdict = defaultdict(dict)
     with ProcessPoolExecutor(max_workers=1) as executor:
         for stat in executor.map(
-            partial(snapshot_page, dandi_instance, log_level),
+            partial(snapshot_page, dandi_instance, gui_url, log_level),
             itertools.product(dandisets, PAGES.keys()),
         ):
             statdict[stat.dandiset][stat.page] = stat

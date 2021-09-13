@@ -2,6 +2,7 @@ click >= 7.0
 click-loglevel ~= 0.2
 dandi >= 0.24.0
 pyyaml
+requests ~= 2.20
 selenium
 
 # Non-Python requirement: chromedriver
