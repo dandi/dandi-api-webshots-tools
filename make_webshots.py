@@ -93,7 +93,9 @@ class Webshotter:
     def login(self, username, password):
         self.driver.get(self.gui_url)
         self.wait_no_progressbar("v-progress-circular")
-        login_button = self.driver.find_elements_by_xpath("//button[@id='login']")[0]
+        login_button = WebDriverWait(self.driver, 300).until(
+            EC.presence_of_element_located((By.XPATH, "//button[@id='login']"))
+        )
         login_text = login_button.text.strip().lower()
         assert "log in" in login_text.lower(), (
             "Login button did not have expected text; expected 'log in',"
