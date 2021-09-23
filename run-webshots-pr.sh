@@ -12,8 +12,7 @@ git clean -df
 git checkout master
 git pull
 
-# Uncomment once gh-4 is merged:
-#( cd tools; git checkout master; git pull )
+( cd tools; git checkout master; git pull )
 
 if [ ! -e venv ]
 then $PYTHON -m virtualenv venv
