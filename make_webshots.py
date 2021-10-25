@@ -12,6 +12,7 @@ import socket
 import statistics
 import time
 from typing import List, Optional, Tuple, Union
+from xml.sax.saxutils import escape
 
 import click
 from click_loglevel import LogLevel
@@ -41,7 +42,10 @@ class LoadStat:
 
     def get_columns(self) -> Tuple[str, str]:
         t = self.time if isinstance(self.time, str) else f"{self.time:.2f}"
-        header = f"t={t}"
+        if "\n" in t:
+            header = "t=[See below]"
+        else:
+            header = f"t={escape(t)}"
         if self.url is not None:
             header += f" [{self.label}]({self.url})"
         else:
@@ -60,6 +64,13 @@ def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
     s += "| --- " * len(stats) + "|\n"
     s += "| " + " | ".join(row) + " |\n"
     s += "\n"
+    first = True
+    for ls in stats:
+        if isinstance(ls.time, str) and "\n" in ls.time:
+            if first:
+                s += "#### Error Messages\n"
+                first = False
+            s += f"<pre>{escape(ls.time)}</pre>\n"
     return s
 
 
