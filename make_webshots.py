@@ -19,7 +19,11 @@ from click_loglevel import LogLevel
 from dandi.consts import known_instances
 from dandi.dandiapi import DandiAPIClient
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+    WebDriverException,
+)
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -127,13 +131,26 @@ class Webshotter:
         # Solution based on https://stackoverflow.com/a/61895999/1265472
         # chose as the most straight-forward
         for _ in range(2):
+            try:
+                self.driver.find_element_by_xpath(
+                    '//p[contains(text(), "secondary rate limit")]'
+                )
+            except NoSuchElementException:
+                pass
+            else:
+                raise RuntimeError("GitHub secondary rate limit exceeded")
             el = WebDriverWait(self.driver, 300).until(
                 lambda driver: driver.find_elements(
-                    By.XPATH, '//input[@value="Authorize"]'
+                    By.XPATH, '//button[@name="authorize"]'
                 )
                 or self.driver.find_elements_by_class_name("v-avatar")
             )[0]
-            if el.tag_name == "input":
+            if el.tag_name == "button":
+                el = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable(
+                        (By.XPATH, '//button[@name="authorize"]')
+                    )
+                )
                 el.click()
             else:
                 break
