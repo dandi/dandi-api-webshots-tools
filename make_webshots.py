@@ -106,6 +106,7 @@ class Webshotter:
         self.driver.get(self.gui_url)
 
     def login(self, username, password):
+        log.info("Logging in ...")
         self.driver.get(self.gui_url)
         self.wait_no_progressbar("v-progress-circular")
         login_button = WebDriverWait(self.driver, 300).until(
@@ -290,6 +291,8 @@ def snapshot_page(dandi_instance, gui_url, log_level, ds_page):
     ds, page = ds_page
     urlsuf, wait_cls, act = PAGES[page]
     try:
+        # Try to avoid hitting GitHub's secondary rate limit:
+        time.sleep(2)
         with Webshotter(gui_url) as ws:
             t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
     except TimeoutException:
