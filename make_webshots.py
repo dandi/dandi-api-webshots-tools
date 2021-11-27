@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
-from functools import partial
-import itertools
+from dataclasses import dataclass, field
 import logging
+from multiprocessing import Pipe, Process
+from multiprocessing.connection import Connection
 from operator import attrgetter
 import os
 from pathlib import Path
+from signal import SIGINT
 import socket
 import statistics
 import time
-from typing import List, Optional, Tuple, Union
+from typing import Callable, ClassVar, List, Optional, Tuple, Union
 from xml.sax.saxutils import escape
 
 import click
@@ -86,7 +86,7 @@ class Webshotter:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
         self.driver.quit()
 
     def set_driver(self):
@@ -139,7 +139,7 @@ class Webshotter:
             except NoSuchElementException:
                 pass
             else:
-                raise RuntimeError("GitHub secondary rate limit exceeded")
+                raise RateLimitError("GitHub secondary rate limit exceeded")
             el = WebDriverWait(self.driver, 300).until(
                 lambda driver: driver.find_elements(
                     By.XPATH, '//button[@name="authorize"]'
@@ -231,16 +231,18 @@ class Webshotter:
             except TimeoutException:
                 log.debug("Timed out")
                 return "timeout"
-            except WebDriverException as exc:
+            except WebDriverException:  # as exc:
                 # do not bother trying to resurrect - it seems to not working
                 # really based on 000040 timeout experience
                 raise
+                """
                 t = str(exc).rstrip()  # so even if we continue out of the loop
                 log.warning("Caught %s. Reinitializing", str(exc))
                 # it might be a reason for subsequent "Max retries exceeded"
                 # since it closes "too much"
                 self.reset_driver()
                 continue
+                """
             except Exception as exc:
                 log.warning("Caught unexpected %s.", str(exc))
                 return str(exc).rstrip()
@@ -252,6 +254,80 @@ class Webshotter:
                 self.driver.save_screenshot(str(page_name.with_suffix(".png")))
                 self.fetch_logs(page_name)
                 return t
+
+
+@dataclass
+class FlakeyFeeder:
+    MAX_TRIES: ClassVar[int] = 5
+
+    target: Callable
+    args: tuple
+    process: Optional[Process] = field(init=False, default=None)
+    pipe: Optional[Connection] = field(init=False, default=None)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
+        if self.process is not None:
+            self.pipe.close()
+            if self.process.is_alive():
+                log.debug("Terminating subprocess")
+                self.process.terminate()
+                self.process.join(2)
+                if self.process.is_alive():
+                    log.debug("Subprocess did not exit in time; killing")
+                    self.process.kill()
+            self.process.close()
+            self.process = None
+            self.pipe = None
+
+    def __call__(self, *x):
+        for _ in range(self.MAX_TRIES):
+            self.ensure()
+            self.pipe.send(x)
+            try:
+                y = self.pipe.recv()
+            except EOFError:
+                log.warning("Subprocess exited while processing %r; restarting", x)
+                log.debug("Waiting for subprocess to terminate ...")
+                self.process.join()
+                log.debug("Subprocess terminated")
+                continue
+            if isinstance(y, Fatality):
+                raise RuntimeError(
+                    f"Subprocess encountered unrecoverable error: {y.msg}"
+                )
+            return y
+        raise RuntimeError("Subprocess failed too many times; giving up")
+
+    def ensure(self):
+        if self.process is None:
+            log.debug("Starting subprocess")
+            self.start()
+        elif not self.process.is_alive():
+            if self.process.exitcode == -SIGINT:
+                raise KeyboardInterrupt("Child process received Cntrl-C")
+            log.debug("Subprocess is dead; restarting")
+            self.process.close()
+            self.start()
+
+    def start(self):
+        self.pipe, subpipe = Pipe()
+        self.process = Process(
+            target=self.target, args=(*self.args, self.pipe, subpipe)
+        )
+        self.process.start()
+        subpipe.close()
+
+
+@dataclass
+class Fatality:
+    msg: str
+
+
+class RateLimitError(Exception):
+    pass
 
 
 def get_dandisets(dandi_instance):
@@ -278,38 +354,41 @@ PAGES = {
 }
 
 
-def snapshot_page(dandi_instance, gui_url, log_level, ds_page):
-    logging.basicConfig(
-        format="%(asctime)s [%(levelname)-8s] %(process)d %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S%z",
-        level=log_level,
-    )
+def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
+    cfg_log(log_level)
+    # <https://stackoverflow.com/a/6567318/744178>
+    c1.close()
     # To guarantee that we time out if something gets stuck:
     socket.setdefaulttimeout(300)
     if gui_url is None:
         gui_url = known_instances[dandi_instance].gui
-    ds, page = ds_page
-    urlsuf, wait_cls, act = PAGES[page]
     try:
-        # Try to avoid hitting GitHub's secondary rate limit:
-        time.sleep(2)
         with Webshotter(gui_url) as ws:
-            t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
-    except TimeoutException:
-        # This can happen if a timeout occurs inside the Webshotter constructor
-        # (e.g., when trying to log in)
-        log.debug("Startup timed out")
-        t = "timeout"
-    except WebDriverException as exc:
-        log.warning("Caught %s", str(exc))
-        t = str(exc).rstrip()
-    return LoadStat(
-        dandiset=ds,
-        page=page,
-        time=t,
-        label="Edit Metadata" if page == "edit-metadata" else "Go to page",
-        url=f"{gui_url}/#/dandiset/{ds}{urlsuf}" if urlsuf is not None else None,
-    )
+            while True:
+                try:
+                    ds, page = conn.recv()
+                except EOFError:
+                    break
+                urlsuf, wait_cls, act = PAGES[page]
+                # Try to avoid hitting GitHub's secondary rate limit:
+                time.sleep(2)
+                t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
+                conn.send(
+                    LoadStat(
+                        dandiset=ds,
+                        page=page,
+                        time=t,
+                        label="Edit Metadata"
+                        if page == "edit-metadata"
+                        else "Go to page",
+                        url=f"{gui_url}/#/dandiset/{ds}{urlsuf}"
+                        if urlsuf is not None
+                        else None,
+                    )
+                )
+    except RateLimitError as e:
+        conn.send(Fatality(str(e)))
+        raise
 
 
 @click.command()
@@ -331,34 +410,29 @@ def snapshot_page(dandi_instance, gui_url, log_level, ds_page):
 )
 @click.argument("dandisets", nargs=-1)
 def main(dandi_instance, gui_url, dandisets, log_level):
+    cfg_log(log_level)
     if dandisets:
         doreadme = False
     else:
-        dandisets = list(get_dandisets(dandi_instance))
+        dandisets = get_dandisets(dandi_instance)
         doreadme = True
-    for ds in dandisets:
-        Path(ds).mkdir(parents=True, exist_ok=True)
 
     # with Webshotter(dandi_instance) as ws:
     #     ws.fetch_logs("initial_log")
 
-    statdict = defaultdict(dict)
-    with ProcessPoolExecutor(max_workers=1) as executor:
-        for stat in executor.map(
-            partial(snapshot_page, dandi_instance, gui_url, log_level),
-            itertools.product(dandisets, PAGES.keys()),
-        ):
-            statdict[stat.dandiset][stat.page] = stat
-
     allstats = []
     readme = ""
-    for ds, raw_stats in sorted(statdict.items()):
-        stats = [raw_stats[p] for p in PAGES.keys()]
-        times = {st.page: st.time for st in stats}
-        with Path(ds, "info.yaml").open("w") as f:
-            yaml.safe_dump({"times": times}, f)
-        readme += render_stats(ds, stats)
-        allstats.extend(stats)
+    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level)) as ff:
+        for ds in dandisets:
+            Path(ds).mkdir(parents=True, exist_ok=True)
+            stats = []
+            for page in PAGES:
+                stats.append(ff(ds, page))
+            times = {st.page: st.time for st in stats}
+            with Path(ds, "info.yaml").open("w") as f:
+                yaml.safe_dump({"times": times}, f)
+            readme += render_stats(ds, stats)
+            allstats.extend(stats)
 
     if doreadme:
         stat_tbl = "| Page | Min Time | Mean ± StdDev | Max Time | Errors |\n"
@@ -396,6 +470,17 @@ def main(dandi_instance, gui_url, dandisets, log_level):
             )
         readme = stat_tbl + "\n\n" + readme
         Path("README.md").write_text(readme)
+
+
+def cfg_log(log_level: int) -> None:
+    logging.basicConfig(
+        format=(
+            "%(asctime)s [%(levelname)-8s] %(processName)s[%(process)d]:"
+            " %(name)s: %(message)s"
+        ),
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+        level=log_level,
+    )
 
 
 if __name__ == "__main__":
