@@ -30,7 +30,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 import yaml
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("make_webshots")
 
 # set to True to fetch the logs, not enabled by default
 FETCH_CONSOLE_LOGS = False
