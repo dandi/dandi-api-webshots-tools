@@ -18,6 +18,9 @@ import click
 from click_loglevel import LogLevel
 from dandi.consts import known_instances
 from dandi.dandiapi import DandiAPIClient
+from psutil import NoSuchProcess
+from psutil import Process as PSProcess
+from psutil import wait_procs
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -389,6 +392,8 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
     except RateLimitError as e:
         conn.send(Fatality(str(e)))
         raise
+    finally:
+        cleanup_children()
 
 
 @click.command()
@@ -481,6 +486,24 @@ def cfg_log(log_level: int) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S%z",
         level=log_level,
     )
+
+
+def cleanup_children() -> None:
+    procs = PSProcess().children(recursive=True)
+    if not procs:
+        return
+    log.info("Cleaning up %d child processes", len(procs))
+    for p in procs:
+        try:
+            p.terminate()
+        except NoSuchProcess:
+            pass
+    gone, alive = wait_procs(procs, timeout=3)
+    for p in alive:
+        try:
+            p.kill()
+        except NoSuchProcess:
+            pass
 
 
 if __name__ == "__main__":
