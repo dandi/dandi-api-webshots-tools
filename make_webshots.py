@@ -121,6 +121,15 @@ class Webshotter:
             f" got {login_text!r}"
         )
         login_button.click()
+        continue_button = WebDriverWait(self.driver, 300).until(
+            EC.presence_of_element_located((By.XPATH, "//button[@type='submit']"))
+        )
+        txt = continue_button.text.strip().lower()
+        assert txt == "continue", (
+            "'Continue' button did not have expected text; expected 'Continue',"
+            f" got {txt!r}"
+        )
+        continue_button.click()
         WebDriverWait(self.driver, 300).until(
             EC.presence_of_element_located((By.ID, "login_field"))
         )
