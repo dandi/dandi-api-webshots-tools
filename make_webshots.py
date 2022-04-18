@@ -345,7 +345,7 @@ def click_edit(driver):
     # TODO: more sensible way to "identify" it:
     # https://github.com/dandi/dandiarchive/issues/648
     edit_button = WebDriverWait(driver, 3).until(
-        EC.element_to_be_clickable((By.XPATH, '//a[@id="view-edit-metadata"]'))
+        EC.element_to_be_clickable((By.XPATH, '//button[@id="view-edit-metadata"]'))
     )
     edit_button.click()
 
