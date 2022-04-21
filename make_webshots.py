@@ -214,11 +214,11 @@ class Webshotter:
             try:
                 if urlsuf is not None:
                     log.debug("Before get")
-                    self.driver.get(f"{self.gui_url}/#/dandiset/{ds}{urlsuf}")
+                    self.driver.get(f"{self.gui_url}/dandiset/{ds}{urlsuf}")
                     log.debug("After get")
                 else:
                     log.debug("Before get")
-                    self.driver.get(f"{self.gui_url}/#/dandiset/{ds}")
+                    self.driver.get(f"{self.gui_url}/dandiset/{ds}")
                     log.debug("After get")
                     log.debug("Before initial wait")
                     self.wait_no_progressbar("v-progress-circular")
@@ -384,7 +384,7 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
                         label="Edit Metadata"
                         if page == "edit-metadata"
                         else "Go to page",
-                        url=f"{gui_url}/#/dandiset/{ds}{urlsuf}"
+                        url=f"{gui_url}/dandiset/{ds}{urlsuf}"
                         if urlsuf is not None
                         else None,
                     )
