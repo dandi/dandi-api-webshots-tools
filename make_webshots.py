@@ -169,10 +169,26 @@ class Webshotter:
         finally:
             self.set_driver()
 
-    def wait_no_progressbar(self, cls):
-        WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
+    def wait_no_progressbar(self, cls, wait_appear=0):
+        if wait_appear:
+            # this is a dirty solution to the fact that now progress bar might not
+            # even appear for awhile, or at all (e.g. for listing an empty dandiset)
+            try:
+                log.debug("Wait for progress bar %s to appear", cls)
+                t0 = time.time()
+                out = WebDriverWait(self.driver, wait_appear, poll_frequency=0.05).until(
+                    EC.visibility_of_element_located((By.CLASS_NAME, cls))
+                    )
+                log.debug(" %s appeared after %fs", cls, time.time() - t0)
+            except TimeoutException as e:
+                log.debug(" %s failed to appear within %fs, continuing", cls, wait_appear)
+                return False  # no need to wait -- it did not come
+        log.debug("Wait for progress bar %s to dis-appear", cls)
+        out = WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
             EC.invisibility_of_element_located((By.CLASS_NAME, cls))
         )
+        return True
+
 
     def fetch_logs(self, filename=None):
         """
@@ -198,7 +214,7 @@ class Webshotter:
                     yaml.safe_dump(logs, f)
         return logs
 
-    def process_dandiset_page(self, ds, urlsuf, page, wait_cls, act):
+    def process_dandiset_page(self, ds, urlsuf, page, wait_cls, pbar_cls, act):
         # TODO: do not do draft unless there is one
         # TODO: do for a released version
         log.info("%s %s", ds, page)
@@ -232,8 +248,16 @@ class Webshotter:
                     act(self.driver)
                     log.debug("After act")
                 if wait_cls is not None:
+                    log.debug("Wait for %s to appear", wait_cls)
+                    WebDriverWait(self.driver, 300, poll_frequency=0.01).until(
+                        EC.visibility_of_element_located((By.CLASS_NAME, wait_cls))
+                    )
+                if pbar_cls is not None:
                     log.debug("Before wait")
-                    self.wait_no_progressbar(wait_cls)
+                    # TEMP: we will have 3 seconds timeout for empty dandisets.
+                    # On Yarik's laptop was taking up to 2 seconds to get pbar to appear.
+                    #  Yarik found no way to tell empty dandiset from a "not yet loading" listing
+                    self.wait_no_progressbar(pbar_cls, wait_appear=3)
                     log.debug("After wait")
             except TimeoutException:
                 log.debug("Timed out")
@@ -357,11 +381,11 @@ def click_edit(driver):
 
 
 PAGES = {
-    "landing": ("", "v-progress-circular", None),
-    "edit-metadata": (None, "v-progress-circular", click_edit),
+    "landing": ("", "mdi-folder", None, None),
+    "edit-metadata": (None, "mdi-folder", None, click_edit),
     # TODO: remove ?location= after https://github.com/dandi/dandi-archive/issues/1058
     # is fixed
-    "view-data": ("/draft/files?location=", "v-progress-linear", None),
+    "view-data": ("/draft/files?location=", None, "v-progress-linear", None),
 }
 
 
