@@ -82,8 +82,9 @@ def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
 
 
 class Webshotter:
-    def __init__(self, gui_url: str):
+    def __init__(self, gui_url: str, headless: bool):
         self.gui_url = gui_url
+        self.headless = headless
         self.set_driver()
 
     def __enter__(self):
@@ -95,7 +96,8 @@ class Webshotter:
     def set_driver(self):
         options = Options()
         options.add_argument("--no-sandbox")
-        options.add_argument("--headless")
+        if self.headless:
+            options.add_argument("--headless")
         options.add_argument("--incognito")
         # options.add_argument('--disable-gpu')
         options.add_argument("--window-size=1024,1400")
@@ -357,7 +359,7 @@ PAGES = {
 }
 
 
-def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
+def snapshot_pipe(dandi_instance, gui_url, log_level, headless, c1, conn):
     cfg_log(log_level)
     # <https://stackoverflow.com/a/6567318/744178>
     c1.close()
@@ -366,7 +368,7 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
     if gui_url is None:
         gui_url = known_instances[dandi_instance].gui
     try:
-        with Webshotter(gui_url) as ws:
+        with Webshotter(gui_url, headless) as ws:
             while True:
                 try:
                     ds, page = conn.recv()
@@ -413,8 +415,13 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
     default=logging.INFO,
     help="Set logging level  [default: INFO]",
 )
+@click.option(
+    "--headless/--no-headless",
+    default=True,
+    help="Run headless or in a visible instance"
+)
 @click.argument("dandisets", nargs=-1)
-def main(dandi_instance, gui_url, dandisets, log_level):
+def main(dandi_instance, gui_url, dandisets, log_level, headless):
     cfg_log(log_level)
     if dandisets:
         doreadme = False
@@ -427,7 +434,7 @@ def main(dandi_instance, gui_url, dandisets, log_level):
 
     allstats = []
     readme = ""
-    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level)) as ff:
+    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level, headless)) as ff:
         for ds in dandisets:
             Path(ds).mkdir(parents=True, exist_ok=True)
             stats = []
