@@ -278,6 +278,8 @@ class FlakeyFeeder:
     def __exit__(self, _exc_type, _exc_val, _exc_tb):
         if self.process is not None:
             self.pipe.close()
+            log.debug("Closed the pipe")
+            time.sleep(1)  # seems to be critical for closing the browser
             if self.process.is_alive():
                 log.debug("Terminating subprocess")
                 self.process.terminate()
