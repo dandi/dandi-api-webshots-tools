@@ -82,9 +82,10 @@ def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
 
 
 class Webshotter:
-    def __init__(self, gui_url: str, headless: bool):
+    def __init__(self, gui_url: str, headless: bool, login: bool):
         self.gui_url = gui_url
         self.headless = headless
+        self.do_login = login
         self.set_driver()
 
     def __enter__(self):
@@ -106,7 +107,8 @@ class Webshotter:
         # driver.set_script_timeout(30)
         # driver.implicitly_wait(10)
         self.driver = webdriver.Chrome(options=options)
-        self.login(os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+        if self.do_login:
+            self.login(os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
         # warm up
         self.driver.get(self.gui_url)
 
@@ -359,7 +361,7 @@ PAGES = {
 }
 
 
-def snapshot_pipe(dandi_instance, gui_url, log_level, headless, c1, conn):
+def snapshot_pipe(dandi_instance, gui_url, log_level, headless, login, c1, conn):
     cfg_log(log_level)
     # <https://stackoverflow.com/a/6567318/744178>
     c1.close()
@@ -368,16 +370,16 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, headless, c1, conn):
     if gui_url is None:
         gui_url = known_instances[dandi_instance].gui
     try:
-        with Webshotter(gui_url, headless) as ws:
+        with Webshotter(gui_url, headless, login) as ws:
             while True:
                 try:
                     ds, page = conn.recv()
                 except EOFError:
                     break
-                urlsuf, wait_cls, act = PAGES[page]
+                urlsuf, wait_cls, pbar_cls, act = PAGES[page]
                 # Try to avoid hitting GitHub's secondary rate limit:
                 time.sleep(2)
-                t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
+                t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, pbar_cls, act)
                 conn.send(
                     LoadStat(
                         dandiset=ds,
@@ -420,8 +422,13 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, headless, c1, conn):
     default=True,
     help="Run headless or in a visible instance"
 )
+@click.option(
+    "--login/--no-login",
+    default=True,
+    help="Login or not login to DANDI archive"
+)
 @click.argument("dandisets", nargs=-1)
-def main(dandi_instance, gui_url, dandisets, log_level, headless):
+def main(dandi_instance, gui_url, dandisets, log_level, headless, login):
     cfg_log(log_level)
     if dandisets:
         doreadme = False
@@ -434,7 +441,7 @@ def main(dandi_instance, gui_url, dandisets, log_level, headless):
 
     allstats = []
     readme = ""
-    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level, headless)) as ff:
+    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level, headless, login)) as ff:
         for ds in dandisets:
             Path(ds).mkdir(parents=True, exist_ok=True)
             stats = []
