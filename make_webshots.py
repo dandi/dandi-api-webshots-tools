@@ -82,8 +82,10 @@ def render_stats(dandiset: str, stats: List[LoadStat]) -> str:
 
 
 class Webshotter:
-    def __init__(self, gui_url: str):
+    def __init__(self, gui_url: str, headless: bool, login: bool):
         self.gui_url = gui_url
+        self.headless = headless
+        self.do_login = login
         self.set_driver()
 
     def __enter__(self):
@@ -95,7 +97,8 @@ class Webshotter:
     def set_driver(self):
         options = Options()
         options.add_argument("--no-sandbox")
-        options.add_argument("--headless")
+        if self.headless:
+            options.add_argument("--headless")
         options.add_argument("--incognito")
         # options.add_argument('--disable-gpu')
         options.add_argument("--window-size=1024,1400")
@@ -104,7 +107,8 @@ class Webshotter:
         # driver.set_script_timeout(30)
         # driver.implicitly_wait(10)
         self.driver = webdriver.Chrome(options=options)
-        self.login(os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
+        if self.do_login:
+            self.login(os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
         # warm up
         self.driver.get(self.gui_url)
 
@@ -165,10 +169,26 @@ class Webshotter:
         finally:
             self.set_driver()
 
-    def wait_no_progressbar(self, cls):
-        WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
+    def wait_no_progressbar(self, cls, wait_appear=0):
+        if wait_appear:
+            # this is a dirty solution to the fact that now progress bar might not
+            # even appear for awhile, or at all (e.g. for listing an empty dandiset)
+            try:
+                log.debug("Wait for progress bar %s to appear", cls)
+                t0 = time.time()
+                out = WebDriverWait(self.driver, wait_appear, poll_frequency=0.05).until(
+                    EC.visibility_of_element_located((By.CLASS_NAME, cls))
+                    )
+                log.debug(" %s appeared after %fs", cls, time.time() - t0)
+            except TimeoutException as e:
+                log.debug(" %s failed to appear within %fs, continuing", cls, wait_appear)
+                return False  # no need to wait -- it did not come
+        log.debug("Wait for progress bar %s to dis-appear", cls)
+        out = WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
             EC.invisibility_of_element_located((By.CLASS_NAME, cls))
         )
+        return True
+
 
     def fetch_logs(self, filename=None):
         """
@@ -194,7 +214,7 @@ class Webshotter:
                     yaml.safe_dump(logs, f)
         return logs
 
-    def process_dandiset_page(self, ds, urlsuf, page, wait_cls, act):
+    def process_dandiset_page(self, ds, urlsuf, page, wait_cls, pbar_cls, act):
         # TODO: do not do draft unless there is one
         # TODO: do for a released version
         log.info("%s %s", ds, page)
@@ -214,11 +234,11 @@ class Webshotter:
             try:
                 if urlsuf is not None:
                     log.debug("Before get")
-                    self.driver.get(f"{self.gui_url}/#/dandiset/{ds}{urlsuf}")
+                    self.driver.get(f"{self.gui_url}/dandiset/{ds}{urlsuf}")
                     log.debug("After get")
                 else:
                     log.debug("Before get")
-                    self.driver.get(f"{self.gui_url}/#/dandiset/{ds}")
+                    self.driver.get(f"{self.gui_url}/dandiset/{ds}")
                     log.debug("After get")
                     log.debug("Before initial wait")
                     self.wait_no_progressbar("v-progress-circular")
@@ -228,8 +248,16 @@ class Webshotter:
                     act(self.driver)
                     log.debug("After act")
                 if wait_cls is not None:
+                    log.debug("Wait for %s to appear", wait_cls)
+                    WebDriverWait(self.driver, 300, poll_frequency=0.01).until(
+                        EC.visibility_of_element_located((By.CLASS_NAME, wait_cls))
+                    )
+                if pbar_cls is not None:
                     log.debug("Before wait")
-                    self.wait_no_progressbar(wait_cls)
+                    # TEMP: we will have 3 seconds timeout for empty dandisets.
+                    # On Yarik's laptop was taking up to 2 seconds to get pbar to appear.
+                    #  Yarik found no way to tell empty dandiset from a "not yet loading" listing
+                    self.wait_no_progressbar(pbar_cls, wait_appear=3)
                     log.debug("After wait")
             except TimeoutException:
                 log.debug("Timed out")
@@ -274,6 +302,8 @@ class FlakeyFeeder:
     def __exit__(self, _exc_type, _exc_val, _exc_tb):
         if self.process is not None:
             self.pipe.close()
+            log.debug("Closed the pipe")
+            time.sleep(1)  # seems to be critical for closing the browser
             if self.process.is_alive():
                 log.debug("Terminating subprocess")
                 self.process.terminate()
@@ -351,13 +381,15 @@ def click_edit(driver):
 
 
 PAGES = {
-    "landing": ("", "v-progress-circular", None),
-    "edit-metadata": (None, "v-progress-circular", click_edit),
-    "view-data": ("/draft/files", "v-progress-linear", None),
+    "landing": ("", "mdi-folder", None, None),
+    "edit-metadata": (None, "mdi-folder", None, click_edit),
+    # TODO: remove ?location= after https://github.com/dandi/dandi-archive/issues/1058
+    # is fixed
+    "view-data": ("/draft/files?location=", None, "v-progress-linear", None),
 }
 
 
-def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
+def snapshot_pipe(dandi_instance, gui_url, log_level, headless, login, c1, conn):
     cfg_log(log_level)
     # <https://stackoverflow.com/a/6567318/744178>
     c1.close()
@@ -366,16 +398,16 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
     if gui_url is None:
         gui_url = known_instances[dandi_instance].gui
     try:
-        with Webshotter(gui_url) as ws:
+        with Webshotter(gui_url, headless, login) as ws:
             while True:
                 try:
                     ds, page = conn.recv()
                 except EOFError:
                     break
-                urlsuf, wait_cls, act = PAGES[page]
+                urlsuf, wait_cls, pbar_cls, act = PAGES[page]
                 # Try to avoid hitting GitHub's secondary rate limit:
                 time.sleep(2)
-                t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, act)
+                t = ws.process_dandiset_page(ds, urlsuf, page, wait_cls, pbar_cls, act)
                 conn.send(
                     LoadStat(
                         dandiset=ds,
@@ -384,7 +416,7 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
                         label="Edit Metadata"
                         if page == "edit-metadata"
                         else "Go to page",
-                        url=f"{gui_url}/#/dandiset/{ds}{urlsuf}"
+                        url=f"{gui_url}/dandiset/{ds}{urlsuf}"
                         if urlsuf is not None
                         else None,
                     )
@@ -413,8 +445,18 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, c1, conn):
     default=logging.INFO,
     help="Set logging level  [default: INFO]",
 )
+@click.option(
+    "--headless/--no-headless",
+    default=True,
+    help="Run headless or in a visible instance"
+)
+@click.option(
+    "--login/--no-login",
+    default=True,
+    help="Login or not login to DANDI archive"
+)
 @click.argument("dandisets", nargs=-1)
-def main(dandi_instance, gui_url, dandisets, log_level):
+def main(dandi_instance, gui_url, dandisets, log_level, headless, login):
     cfg_log(log_level)
     if dandisets:
         doreadme = False
@@ -427,7 +469,7 @@ def main(dandi_instance, gui_url, dandisets, log_level):
 
     allstats = []
     readme = ""
-    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level)) as ff:
+    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level, headless, login)) as ff:
         for ds in dandisets:
             Path(ds).mkdir(parents=True, exist_ok=True)
             stats = []
