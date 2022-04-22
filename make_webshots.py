@@ -359,7 +359,9 @@ def click_edit(driver):
 PAGES = {
     "landing": ("", "v-progress-circular", None),
     "edit-metadata": (None, "v-progress-circular", click_edit),
-    "view-data": ("/draft/files", "v-progress-linear", None),
+    # TODO: remove ?location= after https://github.com/dandi/dandi-archive/issues/1058
+    # is fixed
+    "view-data": ("/draft/files?location=", "v-progress-linear", None),
 }
 
 
