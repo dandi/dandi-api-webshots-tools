@@ -1,6 +1,7 @@
 click >= 7.0
 click-loglevel ~= 0.2
 dandi >= 0.24.0
+polling2
 psutil ~= 5.9
 pyyaml
 selenium
