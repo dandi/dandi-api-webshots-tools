@@ -57,7 +57,7 @@ class LoadStat:
             header += f" [{self.label}]({self.url})"
         else:
             header += f" {self.label}"
-        cell = f"![]({self.dandiset}/{self.page}.png)"
+        cell = f"![](images/{self.dandiset}/{self.page}.png)"
         return (header, cell)
 
     def has_time(self) -> bool:
@@ -176,19 +176,20 @@ class Webshotter:
             try:
                 log.debug("Wait for progress bar %s to appear", cls)
                 t0 = time.time()
-                out = WebDriverWait(self.driver, wait_appear, poll_frequency=0.05).until(
+                WebDriverWait(self.driver, wait_appear, poll_frequency=0.05).until(
                     EC.visibility_of_element_located((By.CLASS_NAME, cls))
-                    )
+                )
                 log.debug(" %s appeared after %fs", cls, time.time() - t0)
-            except TimeoutException as e:
-                log.debug(" %s failed to appear within %fs, continuing", cls, wait_appear)
+            except TimeoutException:
+                log.debug(
+                    " %s failed to appear within %fs, continuing", cls, wait_appear
+                )
                 return False  # no need to wait -- it did not come
         log.debug("Wait for progress bar %s to dis-appear", cls)
-        out = WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
+        WebDriverWait(self.driver, 300, poll_frequency=0.1).until(
             EC.invisibility_of_element_located((By.CLASS_NAME, cls))
         )
         return True
-
 
     def fetch_logs(self, filename=None):
         """
@@ -218,7 +219,7 @@ class Webshotter:
         # TODO: do not do draft unless there is one
         # TODO: do for a released version
         log.info("%s %s", ds, page)
-        page_name = Path(ds, page)
+        page_name = Path("images", ds, page)
         # So we could try a few times in case of catching WebDriverException
         # e.g. as in the case of "invalid session id" whenever we would
         # reinitialize the entire driver
@@ -255,8 +256,9 @@ class Webshotter:
                 if pbar_cls is not None:
                     log.debug("Before wait")
                     # TEMP: we will have 3 seconds timeout for empty dandisets.
-                    # On Yarik's laptop was taking up to 2 seconds to get pbar to appear.
-                    #  Yarik found no way to tell empty dandiset from a "not yet loading" listing
+                    # On Yarik's laptop was taking up to 2 seconds to get pbar
+                    # to appear.  Yarik found no way to tell empty dandiset
+                    # from a "not yet loading" listing
                     self.wait_no_progressbar(pbar_cls, wait_appear=3)
                     log.debug("After wait")
             except TimeoutException:
@@ -448,12 +450,10 @@ def snapshot_pipe(dandi_instance, gui_url, log_level, headless, login, c1, conn)
 @click.option(
     "--headless/--no-headless",
     default=True,
-    help="Run headless or in a visible instance"
+    help="Run headless or in a visible instance",
 )
 @click.option(
-    "--login/--no-login",
-    default=True,
-    help="Login or not login to DANDI archive"
+    "--login/--no-login", default=True, help="Login or not login to DANDI archive"
 )
 @click.argument("dandisets", nargs=-1)
 def main(dandi_instance, gui_url, dandisets, log_level, headless, login):
@@ -469,7 +469,9 @@ def main(dandi_instance, gui_url, dandisets, log_level, headless, login):
 
     allstats = []
     readme = ""
-    with FlakeyFeeder(snapshot_pipe, (dandi_instance, gui_url, log_level, headless, login)) as ff:
+    with FlakeyFeeder(
+        snapshot_pipe, (dandi_instance, gui_url, log_level, headless, login)
+    ) as ff:
         for ds in dandisets:
             Path(ds).mkdir(parents=True, exist_ok=True)
             stats = []
