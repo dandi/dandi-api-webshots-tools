@@ -478,7 +478,7 @@ def main(dandi_instance, gui_url, dandisets, log_level, headless, login):
             for page in PAGES:
                 stats.append(ff(ds, page))
             times = {st.page: st.time for st in stats}
-            with Path(ds, "info.yaml").open("w") as f:
+            with Path("images", ds, "info.yaml").open("w") as f:
                 yaml.safe_dump({"times": times}, f)
             readme += render_stats(ds, stats)
             allstats.extend(stats)
