@@ -473,7 +473,7 @@ def main(dandi_instance, gui_url, dandisets, log_level, headless, login):
         snapshot_pipe, (dandi_instance, gui_url, log_level, headless, login)
     ) as ff:
         for ds in dandisets:
-            Path(ds).mkdir(parents=True, exist_ok=True)
+            Path("images", ds).mkdir(parents=True, exist_ok=True)
             stats = []
             for page in PAGES:
                 stats.append(ff(ds, page))
