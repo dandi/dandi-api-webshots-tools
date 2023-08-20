@@ -7,6 +7,7 @@ from multiprocessing.connection import Connection
 from operator import attrgetter
 import os
 from pathlib import Path
+import polling2
 from signal import SIGINT
 import socket
 import statistics
@@ -37,6 +38,51 @@ log = logging.getLogger("make_webshots")
 
 # set to True to fetch the logs, not enabled by default
 FETCH_CONSOLE_LOGS = False
+
+
+# from https://github.com/candleindark/cchrome with minor changes
+# to get idea when page finished loading
+class AssureLoadedChrome(webdriver.Chrome):
+    """
+    An instance of this class represents a Chrome web driver that ensures a page loaded by its get method loads fully
+    """
+
+    def __init__(self, *args, timeout=40, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Set timeout for page loading
+        self._timeout = timeout
+        self.set_page_load_timeout(timeout)
+
+    def get(self, url):
+        def success(_):
+            try:
+                # Wait for and reaffirm that the page is loaded completely
+                polling2.poll(
+                    target=self.execute_script,
+                    step=0.05,
+                    args=('return document.readyState',),
+                    timeout=8.0,
+                    check_success=lambda doc_ready_state: doc_ready_state == 'complete'
+                )
+            except polling2.TimeoutException:
+                return False
+            else:
+                return True
+
+        try:
+            ret = polling2.poll(
+                target=super().get,
+                step=0.5,
+                args=(url,),
+                timeout=self._timeout * 2,
+                check_success=success,
+                ignore_exceptions=(TimeoutException,)
+            )
+        except polling2.TimeoutException:
+            raise RuntimeError(f'{url} has failed to load completely.')
+        else:
+            return ret
 
 
 @dataclass
@@ -106,7 +152,7 @@ class Webshotter:
         # driver.set_page_load_timeout(30)
         # driver.set_script_timeout(30)
         # driver.implicitly_wait(10)
-        self.driver = webdriver.Chrome(options=options)
+        self.driver = AssureLoadedChrome(options=options)
         if self.do_login:
             self.login(os.environ["DANDI_USERNAME"], os.environ["DANDI_PASSWORD"])
         # warm up
@@ -128,19 +174,19 @@ class Webshotter:
         WebDriverWait(self.driver, 300).until(
             EC.presence_of_element_located((By.ID, "login_field"))
         )
-        username_field = self.driver.find_element_by_id("login_field")
-        password_field = self.driver.find_element_by_id("password")
+        username_field = self.driver.find_element(By.ID, "login_field")
+        password_field = self.driver.find_element(By.ID, "password")
         username_field.send_keys(username)
         password_field.send_keys(password)
         # self.driver.save_screenshot("logging-in.png")
-        self.driver.find_elements_by_tag_name("form")[0].submit()
+        self.driver.find_elements(By.TAG_NAME, "form")[0].submit()
 
         # Here we might get "Authorize" dialog or not
         # Solution based on https://stackoverflow.com/a/61895999/1265472
         # chose as the most straight-forward
         for _ in range(2):
             try:
-                self.driver.find_element_by_xpath(
+                self.driver.find_element(By.XPATH,
                     '//p[contains(text(), "secondary rate limit")]'
                 )
             except NoSuchElementException:
@@ -151,7 +197,7 @@ class Webshotter:
                 lambda driver: driver.find_elements(
                     By.XPATH, '//button[@name="authorize"]'
                 )
-                or self.driver.find_elements_by_class_name("v-avatar")
+                or self.driver.find_elements(By.CLASS_NAME, "v-avatar")
             )[0]
             if el.tag_name == "button":
                 el = WebDriverWait(self.driver, 3).until(
@@ -241,9 +287,9 @@ class Webshotter:
                     log.debug("Before get")
                     self.driver.get(f"{self.gui_url}/dandiset/{ds}")
                     log.debug("After get")
-                    log.debug("Before initial wait")
-                    self.wait_no_progressbar("v-progress-circular")
-                    log.debug("After initial wait")
+                    # log.debug("Before initial wait")
+                    # self.wait_no_progressbar("v-progress-circular")
+                    # log.debug("After initial wait")
                 if act is not None:
                     log.debug("Before act")
                     act(self.driver)
@@ -254,6 +300,7 @@ class Webshotter:
                         EC.visibility_of_element_located((By.CLASS_NAME, wait_cls))
                     )
                 if pbar_cls is not None:
+                    raise ValueError("must all be disabled by now")
                     log.debug("Before wait")
                     # TEMP: we will have 3 seconds timeout for empty dandisets.
                     # On Yarik's laptop was taking up to 2 seconds to get pbar
@@ -387,7 +434,7 @@ PAGES = {
     "edit-metadata": (None, "mdi-folder", None, click_edit),
     # TODO: remove ?location= after https://github.com/dandi/dandi-archive/issues/1058
     # is fixed
-    "view-data": ("/draft/files?location=", None, "v-progress-linear", None),
+    "view-data": ("/draft/files?location=", None, None, None),
 }
 
 
