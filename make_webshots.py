@@ -128,19 +128,20 @@ class Webshotter:
         WebDriverWait(self.driver, 300).until(
             EC.presence_of_element_located((By.ID, "login_field"))
         )
-        username_field = self.driver.find_element_by_id("login_field")
-        password_field = self.driver.find_element_by_id("password")
+        username_field = self.driver.find_element(By.ID, "login_field")
+        password_field = self.driver.find_element(By.ID, "password")
         username_field.send_keys(username)
         password_field.send_keys(password)
         # self.driver.save_screenshot("logging-in.png")
-        self.driver.find_elements_by_tag_name("form")[0].submit()
+        self.driver.find_elements(By.TAG_NAME, "form")[0].submit()
 
         # Here we might get "Authorize" dialog or not
         # Solution based on https://stackoverflow.com/a/61895999/1265472
         # chose as the most straight-forward
         for _ in range(2):
             try:
-                self.driver.find_element_by_xpath(
+                self.driver.find_element(
+                    By.XPATH,
                     '//p[contains(text(), "secondary rate limit")]'
                 )
             except NoSuchElementException:
@@ -151,7 +152,7 @@ class Webshotter:
                 lambda driver: driver.find_elements(
                     By.XPATH, '//button[@name="authorize"]'
                 )
-                or self.driver.find_elements_by_class_name("v-avatar")
+                or self.driver.find_elements(By.CLASS_NAME, "v-avatar")
             )[0]
             if el.tag_name == "button":
                 el = WebDriverWait(self.driver, 3).until(
